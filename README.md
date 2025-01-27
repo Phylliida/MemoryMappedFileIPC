@@ -137,6 +137,8 @@ the ping connection will send a ping every 1 second, you can adjust this by pass
 
 But make sure subscriber and publisher have the same value for millisBetweenPing or they will disconnect.
 
+These are seperate connections to allow for the data thread to take as long as you want processing the data.
+
 ### Syncronization 
 
 I use `\\Global` shared event wait handles (see MemoryMappedFileServer.cs).
