@@ -100,7 +100,7 @@ subscriber.RecievedBytes += (bytes) =>
 Make sure to call
 
 ```c#
-publisher.Dispose()
+subscriber.Dispose()
 ```
 
 once you are done using it.
