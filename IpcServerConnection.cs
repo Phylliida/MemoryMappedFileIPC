@@ -1,12 +1,8 @@
+using Newtonsoft.Json;
 using System;
 using System.IO;
-using System.IO.MemoryMappedFiles;
-using System.IO.Pipes;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace MemoryMappedFileIPC
 {
@@ -46,9 +42,13 @@ namespace MemoryMappedFileIPC
         Thread writeStatusThread;
         IpcUtils.DebugLogType DebugLog;
         public IpcServerConnection(string baseKey, int millisBetweenPing, int processId,
-            CancellationTokenSource stopToken, IpcUtils.DebugLogType DebugLog)
+            CancellationTokenSource stopToken, IpcUtils.DebugLogType DebugLog=null)
         {
             this.DebugLog = DebugLog;
+            if (DebugLog == null)
+            {
+                this.DebugLog = (x) => { };
+            }
             this.baseKey = baseKey;
             this.millisBetweenPing = millisBetweenPing;
             this.processId = processId;

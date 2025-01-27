@@ -1,5 +1,4 @@
 using System;
-using System.IO.Pipes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,9 +31,13 @@ namespace MemoryMappedFileIPC
 
         IpcUtils.DebugLogType DebugLog;
         public IpcClientConnection(string idOfServer, int millisBetweenPing, int timeoutMultiplier,
-            CancellationTokenSource stopToken, IpcUtils.DebugLogType DebugLog)
+            CancellationTokenSource stopToken, IpcUtils.DebugLogType DebugLog=null)
         {
             this.DebugLog = DebugLog;
+            if (DebugLog == null)
+            {
+                this.DebugLog = (x) => { };
+            }
             this.parentStopTokenSource = stopToken;
             this.selfStopTokenSource = new CancellationTokenSource();
             this.stopToken = CancellationTokenSource.CreateLinkedTokenSource(parentStopTokenSource.Token, selfStopTokenSource.Token);
