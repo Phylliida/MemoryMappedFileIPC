@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,24 +11,31 @@ namespace MemoryMappedFileIPC
 {
     public class IpcPublisher : IDisposable
     {
-        public CancellationTokenSource stopToken = new CancellationTokenSource();
-        public ConcurrentDictionary<int, IpcClientConnection> connections = new ConcurrentDictionary<int, IpcClientConnection>();
-        public int processId;
+        CancellationTokenSource stopToken = new CancellationTokenSource();
+        ConcurrentDictionary<int, IpcClientConnection> connections = new ConcurrentDictionary<int, IpcClientConnection>();
+        int processId;
         public int millisBetweenPing;
-        public string baseKey;
+        public string channelName;
+        public string serverDirectory;
 
-        public Thread searchThread;
+        Thread searchThread;
         
         public ManualResetEvent connectEvent = new ManualResetEvent(false);
         public ManualResetEvent disconnectEvent = new ManualResetEvent(true);
-        public object connectEventLock = new object();
+        object connectEventLock = new object();
 
         DebugLogType DebugLog;
 
-        public IpcPublisher(string baseKey, int millisBetweenPing, DebugLogType logger)
+        public IpcPublisher(string channelName, string serverDirectory, int millisBetweenPing = 1000, DebugLogType logger=null)
         {
+            this.serverDirectory = serverDirectory;
+            Directory.CreateDirectory(serverDirectory);
             this.DebugLog = logger;
-            this.baseKey = baseKey;
+            if (DebugLog == null)
+            {
+                this.DebugLog = (x) => { };
+            }
+            this.channelName = channelName;
             this.processId = System.Diagnostics.Process.GetCurrentProcess().Id;
             this.millisBetweenPing = millisBetweenPing;
 
@@ -76,7 +84,7 @@ namespace MemoryMappedFileIPC
             // we need to lock to ensure we don't set this between the IsConnected check above and resetting
             lock (connectEventLock)
             {
-                if (IsConnected())
+                if (NumActiveConnections() > 0)
                 {
                     connectEvent.Set();
                     disconnectEvent.Reset();
@@ -117,9 +125,9 @@ namespace MemoryMappedFileIPC
 
             //DebugLog("Looking to connect, currently have " + connections.Count + " active connections");
             
-            foreach (IpcServerInfo server in IpcUtils.GetLoadedServers(this.millisBetweenPing * 2, stopToken))
+            foreach (IpcServerInfo server in IpcUtils.GetLoadedServers(serverDirectory, this.millisBetweenPing * 2, stopToken))
             {
-                if (server.baseKey == baseKey &&
+                if (server.baseKey == channelName &&
                     server.connectionStatus == IpcUtils.ConnectionStatus.WaitingForConnection &&
                     server.processId != processId &&
                     !connections.ContainsKey(server.processId))
@@ -151,17 +159,18 @@ namespace MemoryMappedFileIPC
             }
         }
 
-        public bool IsConnected()
+        public int NumActiveConnections()
         {
+            int activeConnections = 0;
             foreach (KeyValuePair<int, IpcClientConnection> connection in connections)
             {
                 if (connection.Value.connectionStatus == IpcUtils.ConnectionStatus.Connected)
                 {
-                    return true;
+                    activeConnections += 1;
                 }
             }
 
-            return false;
+            return activeConnections;
         }
 
         public void Dispose()

@@ -8,9 +8,9 @@ namespace MemoryMappedFileIPC
 {
     public class IpcServerConnection : IDisposable
     {
-        public static Guid MakeUniqueGuid() {
+        public static Guid MakeUniqueGuid(string serverDirectory) {
             Guid guid = Guid.NewGuid();
-            while (File.Exists(IpcUtils.GuidToConnectionPath(guid))) {
+            while (File.Exists(IpcUtils.GuidToConnectionPath(guid, serverDirectory))) {
                 guid = Guid.NewGuid();
             }
             return guid;
@@ -40,8 +40,9 @@ namespace MemoryMappedFileIPC
         Thread dataThread;
         Thread pingThread;
         Thread writeStatusThread;
+        string serverDirectory;
         IpcUtils.DebugLogType DebugLog;
-        public IpcServerConnection(string baseKey, int millisBetweenPing, int processId,
+        public IpcServerConnection(string baseKey, string serverDirectory, int millisBetweenPing, int processId,
             CancellationTokenSource stopToken, IpcUtils.DebugLogType DebugLog=null)
         {
             this.DebugLog = DebugLog;
@@ -53,10 +54,11 @@ namespace MemoryMappedFileIPC
             this.millisBetweenPing = millisBetweenPing;
             this.processId = processId;
             this.parentStopToken = stopToken;
+            this.serverDirectory = serverDirectory;
             this.selfStopTokenSource = new CancellationTokenSource();
             this.stopToken = CancellationTokenSource.CreateLinkedTokenSource(this.selfStopTokenSource.Token, this.parentStopToken.Token);
             this.connectionStatus = IpcUtils.ConnectionStatus.WaitingForConnection;
-            guid = MakeUniqueGuid();
+            guid = MakeUniqueGuid(serverDirectory);
         }
 
 
@@ -180,7 +182,7 @@ namespace MemoryMappedFileIPC
 
                 }
                 // remove our file since we are closed
-                IpcUtils.SafeDeleteFile(IpcUtils.GuidToConnectionPath(this.guid), this.stopToken);
+                IpcUtils.SafeDeleteFile(IpcUtils.GuidToConnectionPath(this.guid, this.serverDirectory), this.stopToken);
                 DebugLog("Terminating write status thread of server connected to " + GetServerKey());
             });
 
@@ -241,7 +243,7 @@ namespace MemoryMappedFileIPC
             };
 
             IpcUtils.SafeWriteAllText(
-                IpcUtils.GuidToConnectionPath(this.guid),
+                IpcUtils.GuidToConnectionPath(this.guid, this.serverDirectory),
                 JsonConvert.SerializeObject(serverInfo),
                 stopToken
             );

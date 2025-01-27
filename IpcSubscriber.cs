@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using static MemoryMappedFileIPC.IpcUtils;
@@ -14,26 +15,33 @@ namespace MemoryMappedFileIPC
     /// </summary>
     public class IpcSubscriber : IDisposable
     {
-        string baseKey;
-        int millisBetweenPing;
+        public string serverDirectory;
+        public string channelName;
+        public int millisBetweenPing;
         int processId;
         
         CancellationTokenSource stopToken = new CancellationTokenSource();
         
-        public volatile ConcurrentBag<IpcServerConnection> connections = new ConcurrentBag<IpcServerConnection>();
+        volatile ConcurrentBag<IpcServerConnection> connections = new ConcurrentBag<IpcServerConnection>();
 
         public event IpcServerConnection.RecievedBytesCallback RecievedBytes;
         
         
         public ManualResetEvent connectEvent = new ManualResetEvent(false);
         public ManualResetEvent disconnectEvent = new ManualResetEvent(true);
-        public object connectEventLock = new object();
+        object connectEventLock = new object();
 
         DebugLogType DebugLog;
 
-        public IpcSubscriber(string baseKey, int millisBetweenPing, DebugLogType logger) {
+        public IpcSubscriber(string channelName, string serverDirectory, int millisBetweenPing=1000, DebugLogType logger=null) {
             this.DebugLog = logger;
-            this.baseKey = baseKey;
+            if (DebugLog == null)
+            {
+                this.DebugLog = (x) => { };
+            }
+            this.channelName = channelName;
+            this.serverDirectory = serverDirectory;
+            Directory.CreateDirectory(serverDirectory); // create if not exist
             this.millisBetweenPing = millisBetweenPing;
             this.processId = System.Diagnostics.Process.GetCurrentProcess().Id;
             AddNewListener();
@@ -43,7 +51,8 @@ namespace MemoryMappedFileIPC
         {
             DebugLog("Adding new ipc listener");
             IpcServerConnection connection = new IpcServerConnection(
-                this.baseKey,
+                this.channelName,
+                this.serverDirectory,
                 this.millisBetweenPing,
                 this.processId,
                 stopToken,
@@ -82,7 +91,7 @@ namespace MemoryMappedFileIPC
             // we need to lock to ensure we don't set this between the IsConnected check above and resetting
             lock (connectEventLock)
             {
-                if (IsConnected())
+                if (NumActiveConnections() > 0)
                 {
                     connectEvent.Set();
                     disconnectEvent.Reset();
@@ -144,17 +153,18 @@ namespace MemoryMappedFileIPC
             }
         }
 
-        public bool IsConnected()
+        public int NumActiveConnections()
         {
+            int activeConnections = 0;
             foreach (IpcServerConnection connection in connections)
             {
                 if (connection.connectionStatus == IpcUtils.ConnectionStatus.Connected)
                 {
-                    return true;
+                    activeConnections += 1;
                 }
             }
 
-            return false;
+            return activeConnections;
         }
 
         public void Dispose()

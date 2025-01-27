@@ -77,17 +77,18 @@ namespace MemoryMappedFileIPC
             return DateTimeOffset.Now.ToUnixTimeMilliseconds();
         }
 
-        public static string GuidToConnectionPath(Guid guid) {
-            return Path.Combine(GetServerDirectory(), guid.ToString() + ".json");
+        public static string GuidToConnectionPath(Guid guid, string serverDirectory) {
+            return Path.Combine(serverDirectory, guid.ToString() + ".json");
         }
 
-        public static string GetServerDirectory() {
+        /*
+        public static string GetServerDirectory(string serverDirectory) {
             string serverDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TefssaCoil", "ResoniteDataWrapper", "Servers");
             // make if not exists
             Directory.CreateDirectory(serverDirectory);
             return serverDirectory;
-
         }
+        */
 
         public static int WAIT_MILLIS = 100;
         public static int NUM_RETRIES = 6;
@@ -213,9 +214,9 @@ namespace MemoryMappedFileIPC
         /// Fetches loaded servers from the config files
         /// </summary>
         /// <param name="keepaliveMillis">How long since last update we allow before a server is ignored</param>
-        public static IEnumerable<IpcServerInfo> GetLoadedServers(long keepAliveMillis, CancellationTokenSource stopToken) {
+        public static IEnumerable<IpcServerInfo> GetLoadedServers(string serverDirectory, long keepAliveMillis, CancellationTokenSource stopToken) {
             List<IpcServerInfo> servers = new List<IpcServerInfo>();
-            foreach (string server in Directory.GetFiles(GetServerDirectory(), "*.json")) {
+            foreach (string server in Directory.GetFiles(serverDirectory, "*.json")) {
                 try {
                     string text = SafeReadAllText(server, stopToken);
                     if (text != null)
