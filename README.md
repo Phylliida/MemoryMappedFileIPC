@@ -5,7 +5,8 @@ Pub/sub interface, compatible with most .NET versions. Only works on Windows.
 
 ## What is it?
 
-Memory mapped files, also known as shared memory, allow for efficient communication between processes.
+Memory mapped files, also known as shared memory, allow for efficient communication between processes. They are much faster than websockets, named pipes, and TCP or UDP.
+
 
 However, the C# interface to memory mapped files is low-level. In particular, implementing pub-sub for multiple publishers and subscribers is non-trivial.
 
