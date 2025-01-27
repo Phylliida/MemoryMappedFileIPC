@@ -109,7 +109,7 @@ there is a `connectEvent`, `disconnectEvent`, and `NumActiveConnections()` avail
 
 ### Bidirectional communication?
 
-Just make each side have both a publisher and a subscriber.
+Just make each side have both a publisher and a subscriber. Publishers will only connect to subscribers with a different process id.
 
 ## Implementation Details
 
