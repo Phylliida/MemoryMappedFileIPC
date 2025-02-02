@@ -187,14 +187,11 @@ namespace MemoryMappedFileIPC
                 searchThread.Join();
                 searchThread = null;
             }
-            lock(connectEventLock)
+            foreach (KeyValuePair<int, IpcClientConnection> connection in connections.ToList())
             {
-                foreach (KeyValuePair<int, IpcClientConnection> connection in connections.ToList())
-                {
-                    connection.Value.Dispose();
-                }
-                connections.Clear();
+                connection.Value.Dispose();
             }
+            connections.Clear();
 
             if (connectEvent != null)
             {
