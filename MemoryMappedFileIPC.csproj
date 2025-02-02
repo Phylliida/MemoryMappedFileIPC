@@ -4,6 +4,13 @@
     <TargetFramework>net472</TargetFramework>
 	  <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 	  <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+	  <PackageProjectUrl>https://github.com/Phylliida/MemoryMappedFileIPC</PackageProjectUrl>
+	  <RepositoryUrl>https://github.com/Phylliida/MemoryMappedFileIPC</RepositoryUrl>
+	  <PackageReadmeFile>README.md</PackageReadmeFile>
+	  <Description>Pure c# IPC library using a memory mapped file (shared memory). Pub/sub interface, compatible with most .NET versions. </Description>
+	  <SignAssembly>False</SignAssembly>
+	  <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
 
 	<Target Name="PostPublish" AfterTargets="Publish">
@@ -12,6 +19,17 @@
 	
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+	
+  <ItemGroup>
+    <None Update="LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Update="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>
