@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
 using System.Threading.Tasks;
 using static MemoryMappedFileIPC.IpcUtils;
@@ -175,16 +176,41 @@ namespace MemoryMappedFileIPC
 
         public void Dispose()
         {
-            stopToken.Cancel();
-            foreach (KeyValuePair<int, IpcClientConnection> connection in connections)
+            if (stopToken != null)
             {
-                connection.Value.Dispose();
+                stopToken.Cancel();
+            }
+            // important to let search thread finish before disposing connections
+            // otherwise it may have made another one we would miss disposing
+            if (searchThread != null)
+            {
+                searchThread.Join();
+                searchThread = null;
+            }
+            lock(connectEventLock)
+            {
+                foreach (KeyValuePair<int, IpcClientConnection> connection in connections.ToList())
+                {
+                    connection.Value.Dispose();
+                }
+                connections.Clear();
             }
 
-            searchThread.Join();
-            connectEvent.Dispose();
-            disconnectEvent.Dispose();
-            stopToken.Dispose();
+            if (connectEvent != null)
+            {
+                connectEvent.Dispose();
+                connectEvent = null;
+            }
+            if (disconnectEvent != null)
+            {
+                disconnectEvent.Dispose();
+                disconnectEvent = null;
+            }
+            if (stopToken != null)
+            {
+                stopToken.Dispose();
+                stopToken = null;
+            }
         }
     }
 }

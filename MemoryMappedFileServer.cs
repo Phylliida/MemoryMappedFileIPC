@@ -33,7 +33,11 @@ namespace MemoryMappedFileIPC
 
         public void Dispose()
         {
-            waitHandle.Dispose();
+            if (waitHandle != null)
+            {
+                waitHandle.Dispose();
+                waitHandle = null;
+            }
         }
     }
     public class MemoryMappedFileConnection : IDisposable
@@ -238,13 +242,43 @@ namespace MemoryMappedFileIPC
 
         public void Dispose()
         {
-            accessor.Dispose();
-            file.Dispose();
-            readyToWrite.Dispose();
-            readyForRead.Dispose();
-            finishedRead.Dispose();
-            connected.Dispose();
-            readyForConnection.Dispose();
+            // need these null checks becauase a partial init can happen and if we don't have them
+            // then we'll get an error and fail to clean up everything
+            if (accessor != null)
+            {
+                accessor.Dispose();
+                accessor = null;
+            }
+            if (file != null)
+            {
+                file.Dispose();
+                file = null;
+            }
+            if (readyToWrite != null)
+            {
+                readyToWrite.Dispose();
+                readyToWrite = null;
+            }
+            if (readyForRead != null)
+            {
+                readyForRead.Dispose();
+                readyForRead = null;
+            }
+            if (finishedRead != null)
+            {
+                finishedRead.Dispose();
+                finishedRead = null;
+            }
+            if (connected != null)
+            {
+                connected.Dispose();
+                connected = null;
+            }
+            if (readyForConnection == null)
+            {
+                readyForConnection.Dispose();
+                readyForConnection = null;
+            }
         }
     }
 }

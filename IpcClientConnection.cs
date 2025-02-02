@@ -140,11 +140,35 @@ namespace MemoryMappedFileIPC
         public void Dispose()
         {
             DebugLog("Started disposing client " + idOfServer);
-            selfStopTokenSource.Cancel();
-            dataThread.Join();
-            pingThread.Join();
-            bytesToSend.Dispose();
-            selfStopTokenSource.Dispose();
+            if (selfStopTokenSource != null)
+            {
+                selfStopTokenSource.Cancel();
+            }
+            if (dataThread != null)
+            {
+                dataThread.Join();
+                dataThread = null;
+            }
+            if (pingThread != null)
+            {
+                pingThread.Join();
+                pingThread = null;
+            }
+            if (bytesToSend != null)
+            {
+                bytesToSend.Dispose();
+                bytesToSend = null;
+            }
+            if (selfStopTokenSource != null)
+            {
+                selfStopTokenSource.Dispose();
+                selfStopTokenSource = null;
+            }
+            if (stopToken != null)
+            {
+                stopToken.Dispose();
+                stopToken = null;
+            }
             DebugLog("Finished disposing client " + idOfServer);
         }
 
