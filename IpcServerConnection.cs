@@ -192,12 +192,35 @@ namespace MemoryMappedFileIPC
         }
 
         public void Dispose() {
-            selfStopTokenSource.Cancel();
-            dataThread.Join();
-            pingThread.Join();
-            writeStatusThread.Join();
-            selfStopTokenSource.Dispose();
-            stopToken.Dispose();
+            if (selfStopTokenSource != null)
+            {
+                selfStopTokenSource.Cancel();
+            }
+            if (dataThread != null)
+            {
+                dataThread.Join();
+                dataThread = null;
+            }
+            if (pingThread != null)
+            {
+                pingThread.Join();
+                pingThread = null;
+            }
+            if (writeStatusThread != null)
+            {
+                writeStatusThread.Join();
+                writeStatusThread = null;
+            }
+            if (stopToken != null)
+            {
+                stopToken.Dispose();
+                stopToken = null;
+            }
+            if (selfStopTokenSource != null)
+            {
+                selfStopTokenSource.Dispose();
+                selfStopTokenSource = null;
+            }
             DebugLog("Finished disposing server " + GetServerKey());
         }
 

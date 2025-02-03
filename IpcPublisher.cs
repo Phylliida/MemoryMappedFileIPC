@@ -14,16 +14,19 @@ namespace MemoryMappedFileIPC
     {
         CancellationTokenSource stopToken = new CancellationTokenSource();
         ConcurrentDictionary<int, IpcClientConnection> connections = new ConcurrentDictionary<int, IpcClientConnection>();
+        ConcurrentQueueWithNotification<IpcClientConnection> connectionsToDispose = new ConcurrentQueueWithNotification<IpcClientConnection>();
         int processId;
         public int millisBetweenPing;
         public string channelName;
         public string serverDirectory;
 
         Thread searchThread;
-        
+        Thread disposingThread;
+
         public ManualResetEvent connectEvent = new ManualResetEvent(false);
         public ManualResetEvent disconnectEvent = new ManualResetEvent(true);
         object connectEventLock = new object();
+        object disposeLock = new object();
 
         DebugLogType DebugLog;
 
@@ -67,15 +70,52 @@ namespace MemoryMappedFileIPC
                 }
             });
             searchThread.Start();
+
+            disposingThread = new Thread(() =>
+            {
+                try
+                {
+                    while (!stopToken.IsCancellationRequested)
+                    {
+                        // we need to do this in this order to ensure no race conditions with dispose logic at end
+                        if (connectionsToDispose.TryPeek(out IpcClientConnection _, -1, stopToken.Token))
+                        {
+                            lock (disposeLock)
+                            {
+                                if (stopToken != null && !stopToken.IsCancellationRequested)
+                                {
+                                    if (connectionsToDispose.TryDequeue(out IpcClientConnection connectionToDispose, 0, stopToken.Token))
+                                    {
+                                        connectionToDispose.Dispose();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+
+                }
+            });
+
+            disposingThread.Start();
         }
 
         public void Publish(byte[] bytes)
         {
-            foreach (KeyValuePair<int, IpcClientConnection> connection in connections)
+            lock (connectEventLock)
             {
-                if (connection.Value.connectionStatus == IpcUtils.ConnectionStatus.Connected)
+                if (stopToken == null || stopToken.IsCancellationRequested)
                 {
-                    connection.Value.SendBytes(bytes);
+                    return;
+                }
+                foreach (KeyValuePair<int, IpcClientConnection> connection in connections)
+                {
+                    if (connection.Value.connectionStatus == IpcUtils.ConnectionStatus.Connected)
+                    {
+                        connection.Value.SendBytes(bytes);
+                    }
                 }
             }
         }
@@ -85,6 +125,10 @@ namespace MemoryMappedFileIPC
             // we need to lock to ensure we don't set this between the IsConnected check above and resetting
             lock (connectEventLock)
             {
+                if (stopToken == null || stopToken.IsCancellationRequested)
+                {
+                    return;
+                }
                 if (NumActiveConnections() > 0)
                 {
                     connectEvent.Set();
@@ -101,112 +145,121 @@ namespace MemoryMappedFileIPC
 
         
         void ConnectToAvailableServers() {
-            // remove all terminated connections, this ensures we can try to reconnect again to a process that disconnected previously
-            List<IpcClientConnection> terminatedConnections = new List<IpcClientConnection>();
-            lock (connectEventLock)
+            lock(connectEventLock)
             {
+                if (stopToken == null || stopToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                // remove all terminated connections, this ensures we can try to reconnect again to a process that disconnected previously
                 foreach (KeyValuePair<int, IpcClientConnection> terminatedConnection in
                     connections.Where(c => c.Value.connectionStatus == ConnectionStatus.Terminated).ToList())
                 {
                     DebugLog("Removing terminated connection to process " + terminatedConnection.Key + " from connections");
                     connections.TryRemove(terminatedConnection.Key, out IpcClientConnection removingConnection);
                     // dispose the terminated connection
-                    terminatedConnections.Add(removingConnection);
+                    connectionsToDispose.Enqueue(removingConnection);
                 }
-            }
-
-            // need to do this in a seperate thread since we might be running in one of the threads we want to join
-            new Thread(() =>
-            {
-                foreach (IpcClientConnection terminatedConnection in terminatedConnections)
+                
+                foreach (IpcServerInfo server in IpcUtils.GetLoadedServers(serverDirectory, this.millisBetweenPing * 2, stopToken))
                 {
-                    terminatedConnection.Dispose();
-                }
-            }).Start();
-
-            //DebugLog("Looking to connect, currently have " + connections.Count + " active connections");
-            
-            foreach (IpcServerInfo server in IpcUtils.GetLoadedServers(serverDirectory, this.millisBetweenPing * 2, stopToken))
-            {
-                if (server.baseKey == channelName &&
-                    server.connectionStatus == IpcUtils.ConnectionStatus.WaitingForConnection &&
-                    server.processId != processId &&
-                    !connections.ContainsKey(server.processId))
-                {
-                    IpcClientConnection clientConnection = new IpcClientConnection(
-                        IpcUtils.GetServerKey(server.baseKey, server.guid),
-                        this.millisBetweenPing,
-                        2,
-                        stopToken,
-                        DebugLog);
-                    lock (connectEventLock)
+                    if (server.baseKey == channelName &&
+                        server.connectionStatus == IpcUtils.ConnectionStatus.WaitingForConnection &&
+                        server.processId != processId &&
+                        !connections.ContainsKey(server.processId))
                     {
+                        IpcClientConnection clientConnection = new IpcClientConnection(
+                            IpcUtils.GetServerKey(server.baseKey, server.guid),
+                            this.millisBetweenPing,
+                            2,
+                            stopToken,
+                            DebugLog);
                         connections[server.processId] = clientConnection;
-                    }
-                    // on disconnect, try to reconnect
-                    clientConnection.OnDisconnect += () =>
-                    {
-                        UpdateConnectionEvents();
-                        // important we do this after reset connect event to avoid
-                        // race condition where we connect between IsConnected test and reset event
-                        if (!stopToken.IsCancellationRequested)
+                        // on disconnect, try to reconnect
+                        clientConnection.OnDisconnect += () =>
                         {
-                            ConnectToAvailableServers();
-                        }
-                    };
-                    clientConnection.OnConnect += UpdateConnectionEvents;
-                    clientConnection.Init();
+                            // important we do this after reset connect event to avoid
+                            // race condition where we connect between IsConnected test and reset event
+                            if (stopToken != null && !stopToken.IsCancellationRequested)
+                            {
+                                UpdateConnectionEvents();
+                                ConnectToAvailableServers();
+                            }
+                        };
+                        clientConnection.OnConnect += () => {
+                            if (stopToken != null && !stopToken.IsCancellationRequested)
+                            {
+                                UpdateConnectionEvents();
+                            }
+                        };
+                        clientConnection.Init();
+                    }
                 }
             }
         }
 
         public int NumActiveConnections()
         {
-            int activeConnections = 0;
-            foreach (KeyValuePair<int, IpcClientConnection> connection in connections)
-            {
-                if (connection.Value.connectionStatus == IpcUtils.ConnectionStatus.Connected)
-                {
-                    activeConnections += 1;
-                }
-            }
-
-            return activeConnections;
+            return connections.ToList() // ToList incase it's modified while iterating
+           .Where(c => c.Value.connectionStatus == ConnectionStatus.Connected)
+           .Count();
         }
 
         public void Dispose()
         {
-            if (stopToken != null)
+            lock(disposeLock)
             {
-                stopToken.Cancel();
+                lock(connectEventLock)
+                {
+                    if (stopToken != null)
+                    {
+                        stopToken.Cancel();
+                    }
+                    foreach (KeyValuePair<int, IpcClientConnection> connection in connections.ToList())
+                    {
+                        connection.Value.Dispose();
+                    }
+                    connections.Clear();
+
+                    while (connectionsToDispose.queue.TryDequeue(out IpcClientConnection connectionToDispose))
+                    {
+                        connectionToDispose.Dispose();
+                    }
+
+                    if (connectEvent != null)
+                    {
+                        connectEvent.Dispose();
+                        connectEvent = null;
+                    }
+                    if (disconnectEvent != null)
+                    {
+                        disconnectEvent.Dispose();
+                        disconnectEvent = null;
+                    }
+                    if (stopToken != null)
+                    {
+                        stopToken.Dispose();
+                        stopToken = null;
+                    }
+                }
             }
-            // important to let search thread finish before disposing connections
-            // otherwise it may have made another one we would miss disposing
+            // let searchThread finish, but outside connectEvent lock since it requests it
             if (searchThread != null)
             {
                 searchThread.Join();
                 searchThread = null;
             }
-            foreach (KeyValuePair<int, IpcClientConnection> connection in connections.ToList())
+            // same for disposing thread, needs to join outside the locks
+            if (disposingThread != null)
             {
-                connection.Value.Dispose();
+                disposingThread.Join();
+                disposingThread = null;
             }
-            connections.Clear();
-
-            if (connectEvent != null)
+            // do this after disposing of disposingThread because it uses it
+            if (connectionsToDispose != null)
             {
-                connectEvent.Dispose();
-                connectEvent = null;
-            }
-            if (disconnectEvent != null)
-            {
-                disconnectEvent.Dispose();
-                disconnectEvent = null;
-            }
-            if (stopToken != null)
-            {
-                stopToken.Dispose();
-                stopToken = null;
+                connectionsToDispose.Dispose();
+                connectionsToDispose = null;
             }
         }
     }

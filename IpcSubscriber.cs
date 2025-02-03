@@ -23,13 +23,15 @@ namespace MemoryMappedFileIPC
         CancellationTokenSource stopToken = new CancellationTokenSource();
         
         volatile ConcurrentBag<IpcServerConnection> connections = new ConcurrentBag<IpcServerConnection>();
+        ConcurrentQueueWithNotification<IpcServerConnection> connectionsToDispose = new ConcurrentQueueWithNotification<IpcServerConnection>();
 
         public event IpcServerConnection.RecievedBytesCallback RecievedBytes;
-        
+        Thread disposingThread;
         
         public ManualResetEvent connectEvent = new ManualResetEvent(false);
         public ManualResetEvent disconnectEvent = new ManualResetEvent(true);
         object connectEventLock = new object();
+        object disposeLock = new object();
 
         DebugLogType DebugLog;
 
@@ -44,7 +46,39 @@ namespace MemoryMappedFileIPC
             Directory.CreateDirectory(serverDirectory); // create if not exist
             this.millisBetweenPing = millisBetweenPing;
             this.processId = System.Diagnostics.Process.GetCurrentProcess().Id;
-            AddNewListener();
+            disposingThread = new Thread(() =>
+            {
+                try
+                {
+                    while (!stopToken.IsCancellationRequested)
+                    {
+                        // we need to do this in this order to ensure no race conditions with dispose logic at end
+                        if (connectionsToDispose.TryPeek(out IpcServerConnection _, -1, stopToken.Token))
+                        {
+                            lock (disposeLock)
+                            {
+                                if (stopToken != null && !stopToken.IsCancellationRequested)
+                                {
+                                    if (connectionsToDispose.TryDequeue(out IpcServerConnection connectionToDispose, 0, stopToken.Token))
+                                    {
+                                        connectionToDispose.Dispose();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+
+                }
+            });
+
+            disposingThread.Start();
+            lock (connectEventLock)
+            {
+                AddNewListener();
+            }
         }
 
         void AddNewListener()
@@ -61,19 +95,19 @@ namespace MemoryMappedFileIPC
             connection.OnDisconnect += () =>
             {
                 DebugLog("ipc listener " + connection.GetServerKey() + " disconnected");
-                UpdateConnectionEvents();
-                if (!stopToken.IsCancellationRequested)
+                if (stopToken != null && !stopToken.IsCancellationRequested)
                 {
+                    UpdateConnectionEvents();
                     CheckListeners();
                 }
             };
             connection.OnConnect += () =>
             {
                 DebugLog("ipc listener " + connection.GetServerKey() + " connected");
-                UpdateConnectionEvents();
                 
-                if (!stopToken.IsCancellationRequested)
+                if (stopToken != null && !stopToken.IsCancellationRequested)
                 {
+                    UpdateConnectionEvents();
                     CheckListeners();
                 }
             };
@@ -84,6 +118,7 @@ namespace MemoryMappedFileIPC
                 this.RecievedBytes?.Invoke(bytes);
             };
             connection.Init();
+
         }
 
         void UpdateConnectionEvents()
@@ -91,6 +126,10 @@ namespace MemoryMappedFileIPC
             // we need to lock to ensure we don't set this between the IsConnected check above and resetting
             lock (connectEventLock)
             {
+                if (stopToken == null || stopToken.IsCancellationRequested)
+                {
+                    return;
+                }
                 if (NumActiveConnections() > 0)
                 {
                     connectEvent.Set();
@@ -106,22 +145,22 @@ namespace MemoryMappedFileIPC
 
         void CheckListeners()
         {
-            // if no one is waiting for connection, make a new one (maybe an error was thrown in connection attempt)
-            bool anyAreWaiting = false;
             lock(connectEventLock)
             {
-                anyAreWaiting = connections.Any(
-                    (c) =>
-                        c.connectionStatus == IpcUtils.ConnectionStatus.WaitingForConnection);
-            }
-            if (!anyAreWaiting)
-            {
-                AddNewListener();
-            }
-            
-            // remove all terminated connections from bag and dispose them
-            lock(connectEventLock)
-            {
+                if (stopToken == null || stopToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                // if no one is waiting for connection, make a new one (maybe an error was thrown in connection attempt)
+                bool anyAreWaiting = connections.Any(
+                        (c) =>
+                            c.connectionStatus == IpcUtils.ConnectionStatus.WaitingForConnection);
+                if (!anyAreWaiting)
+                {
+                    AddNewListener();
+                }
+
+                // remove all terminated connections from bag and dispose them
                 List<IpcServerConnection> terminatedConnections = new List<IpcServerConnection>();
                 ConcurrentBag<IpcServerConnection> cleanedBag = new ConcurrentBag<IpcServerConnection>();
                 foreach (IpcServerConnection connection in connections)
@@ -140,43 +179,70 @@ namespace MemoryMappedFileIPC
                 // within one of the threads that we need to join on dispose
                 if (terminatedConnections.Count > 0)
                 {
-                    new Thread(() =>
+                    foreach (IpcServerConnection terminatedConnection in terminatedConnections)
                     {
-                        // dispose all terminated connections
-                        foreach (IpcServerConnection terminatedConnection in terminatedConnections)
-                        {
-                            DebugLog("Disposing server connection: " + terminatedConnection.GetServerKey());
-                            terminatedConnection.Dispose();
-                        }
-                    }).Start();
+                        connectionsToDispose.Enqueue(terminatedConnection);
+                    }
                 }
             }
         }
 
         public int NumActiveConnections()
         {
-            int activeConnections = 0;
-            foreach (IpcServerConnection connection in connections)
-            {
-                if (connection.connectionStatus == IpcUtils.ConnectionStatus.Connected)
-                {
-                    activeConnections += 1;
-                }
-            }
-
-            return activeConnections;
+            return connections.ToList() // ToList incase it's modified while iterating
+                .Where(c => c.connectionStatus == ConnectionStatus.Connected)
+                .Count();
         }
 
         public void Dispose()
         {
-            stopToken.Cancel();
-            foreach (IpcServerConnection connection in connections)
+            lock(disposeLock)
             {
-                connection.Dispose();
+                lock (connectEventLock)
+                {
+                    if (stopToken != null)
+                    {
+                        stopToken.Cancel();
+                    }
+                    foreach (IpcServerConnection connection in connections)
+                    {
+                        connection.Dispose();
+                    }
+                    while (connectionsToDispose.queue.TryDequeue(out IpcServerConnection connectionToDispose)) {
+                        connectionToDispose.Dispose();
+                    }
+                    // easiest way to clear it bc it doesn't have .Clear or any way to remove (??)
+                    connections = new ConcurrentBag<IpcServerConnection>();
+
+                    if (connectEvent != null)
+                    {
+                        connectEvent.Dispose();
+                        connectEvent = null;
+                    }
+                    if (disconnectEvent != null)
+                    {
+                        disconnectEvent.Dispose();
+                        disconnectEvent = null;
+                    }
+                    if (stopToken != null)
+                    {
+                        stopToken.Dispose();
+                        stopToken = null;
+                    }
+                }
             }
-            connectEvent.Dispose();
-            disconnectEvent.Dispose();
-            stopToken.Dispose();
+            // needs to be done outside of disposingLock since it requests the lock
+            if (disposingThread != null)
+            {
+                disposingThread.Join();
+                disposingThread = null;
+            }
+            // do this after disposing of disposingThread because it uses it
+            if (connectionsToDispose != null)
+            {
+                connectionsToDispose.Dispose();
+                connectionsToDispose = null;
+            }
         }
     }
 }

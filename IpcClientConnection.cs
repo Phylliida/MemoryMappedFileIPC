@@ -20,7 +20,7 @@ namespace MemoryMappedFileIPC
         
         public void SendBytes(byte[] bytes)
         {
-            bytesToSend.Enqueue(bytes);
+            bytesToSend?.Enqueue(bytes);
         }
 
 
@@ -159,15 +159,15 @@ namespace MemoryMappedFileIPC
                 bytesToSend.Dispose();
                 bytesToSend = null;
             }
-            if (selfStopTokenSource != null)
-            {
-                selfStopTokenSource.Dispose();
-                selfStopTokenSource = null;
-            }
             if (stopToken != null)
             {
                 stopToken.Dispose();
                 stopToken = null;
+            }
+            if (selfStopTokenSource != null)
+            {
+                selfStopTokenSource.Dispose();
+                selfStopTokenSource = null;
             }
             DebugLog("Finished disposing client " + idOfServer);
         }
