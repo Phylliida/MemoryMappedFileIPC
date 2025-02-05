@@ -166,4 +166,6 @@ Also, I use only async operations which all recieve a Cancellation token. This e
 
 [https://github.com/cloudtoid/interprocess](https://github.com/cloudtoid/interprocess) seems good, however named semaphores weren't supported on the version of .net I wanted to use, which is why this library exists.
 
+[https://github.com/justinstenning/SharedMemory/](https://github.com/justinstenning/SharedMemory/) is a great alternative, however it doesn't support any number of publishers and subscribers on the same channel.
+
 Named pipes are an alternative to shared memory. However they are slower, and the async read/write methods aren't supported in the version of mono I was using (Resonite).
