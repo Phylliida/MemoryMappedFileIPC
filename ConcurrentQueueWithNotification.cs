@@ -11,7 +11,15 @@ namespace MemoryMappedFileIPC
         public void Enqueue(T item)
         {
             queue.Enqueue(item);
-            signal.Set(); // Signal that queue has an item
+            // we could have a lock here and avoid this ever being thrown, but this avoids locks and is good enough
+            try
+            {
+                signal.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+
+            }
         }
 
         /// <summary>
@@ -87,6 +95,7 @@ namespace MemoryMappedFileIPC
 
             throw new OperationCanceledException();
         }
+
 
         public void Dispose()
         {

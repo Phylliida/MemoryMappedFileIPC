@@ -94,7 +94,7 @@ namespace MemoryMappedFileIPC
         public static int NUM_RETRIES = 6;
 
 
-        public static void SafeDeleteFile(string path, CancellationTokenSource stopToken)
+        public static void SafeDeleteFile(string path, CancellationToken stopToken)
         {
             for (int i = 0; i < NUM_RETRIES && File.Exists(path); i++)
             {
@@ -113,7 +113,7 @@ namespace MemoryMappedFileIPC
                     {
                         try
                         {
-                            Task.Delay(WAIT_MILLIS, stopToken.Token).GetAwaiter().GetResult();
+                            Task.Delay(WAIT_MILLIS, stopToken).GetAwaiter().GetResult();
                         }
                         catch (TaskCanceledException)
                         {
@@ -128,7 +128,7 @@ namespace MemoryMappedFileIPC
             }
         }
 
-        public static string SafeReadAllText(string path, CancellationTokenSource stopToken)
+        public static string SafeReadAllText(string path, CancellationToken stopToken)
         {
             for (int i = 0; i < NUM_RETRIES; i++)
             {
@@ -151,7 +151,7 @@ namespace MemoryMappedFileIPC
                     {
                         try
                         {
-                            Task.Delay(WAIT_MILLIS, stopToken.Token).GetAwaiter().GetResult();
+                            Task.Delay(WAIT_MILLIS, stopToken).GetAwaiter().GetResult();
                         }
                         catch (TaskCanceledException)
                         {
@@ -170,7 +170,7 @@ namespace MemoryMappedFileIPC
 
         public delegate void DebugLogType(string msg);
 
-        public static void SafeWriteAllText(string path, string contents, CancellationTokenSource stopToken)
+        public static void SafeWriteAllText(string path, string contents, CancellationToken stopToken)
         {
             // we need this retry logic because other stuff might be trying to access it
             for (int i = 0; i < NUM_RETRIES; i++)
@@ -195,7 +195,7 @@ namespace MemoryMappedFileIPC
                     {
                         try
                         {
-                            Task.Delay(WAIT_MILLIS, stopToken.Token).GetAwaiter().GetResult();
+                            Task.Delay(WAIT_MILLIS, stopToken).GetAwaiter().GetResult();
                         }
                         catch (TaskCanceledException)
                         {
@@ -214,7 +214,7 @@ namespace MemoryMappedFileIPC
         /// Fetches loaded servers from the config files
         /// </summary>
         /// <param name="keepaliveMillis">How long since last update we allow before a server is ignored</param>
-        public static IEnumerable<IpcServerInfo> GetLoadedServers(string serverDirectory, long keepAliveMillis, CancellationTokenSource stopToken) {
+        public static IEnumerable<IpcServerInfo> GetLoadedServers(string serverDirectory, long keepAliveMillis, CancellationToken stopToken) {
             List<IpcServerInfo> servers = new List<IpcServerInfo>();
             foreach (string server in Directory.GetFiles(serverDirectory, "*.json")) {
                 try {
@@ -230,7 +230,7 @@ namespace MemoryMappedFileIPC
                         // cleanup very old ones so directory not cluttered
                         else if (timeSinceUpdated > keepAliveMillis * 4)
                         {
-                            File.Delete(server);
+                            SafeDeleteFile(server, stopToken);
                         }
                     }
                     // we are canceled, bail
@@ -246,7 +246,7 @@ namespace MemoryMappedFileIPC
                     long curMillis = DateTimeToMillis(DateTime.UtcNow);
                     if (curMillis - lastWriteMillis > keepAliveMillis)
                     {
-                        File.Delete(server);
+                        SafeDeleteFile(server, stopToken);
                     }
                 }
             }

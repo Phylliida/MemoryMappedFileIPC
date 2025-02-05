@@ -168,7 +168,7 @@ namespace MemoryMappedFileIPC
                 {
                     while (!stopToken.IsCancellationRequested)
                     {
-                        WriteServerStatus();
+                        WriteServerStatus(stopToken.Token);
                         // this will immediately return if stopToken canceled
                         Task.Delay(millisBetweenPing, stopToken.Token).GetAwaiter().GetResult();
                     }
@@ -181,9 +181,16 @@ namespace MemoryMappedFileIPC
                 {
 
                 }
-                // remove our file since we are closed
-                IpcUtils.SafeDeleteFile(IpcUtils.GuidToConnectionPath(this.guid, this.serverDirectory), this.stopToken);
-                DebugLog("Terminating write status thread of server connected to " + GetServerKey());
+                catch (Exception ex)
+                {
+                    DebugLog("Got exception in status thread of server, disconnecting " + ex.GetType() + " " + ex.Message + " " + ex.StackTrace);
+                }
+                finally
+                {
+                    // remove our file since we are closed
+                    IpcUtils.SafeDeleteFile(IpcUtils.GuidToConnectionPath(this.guid, this.serverDirectory), this.stopToken.Token);
+                    DebugLog("Terminating write status thread of server connected to " + GetServerKey());
+                }
             });
 
             dataThread.Start();
@@ -258,7 +265,7 @@ namespace MemoryMappedFileIPC
             }
         }
 
-        public void WriteServerStatus() {
+        public void WriteServerStatus(CancellationToken stopToken) {
             IpcServerInfo serverInfo = new IpcServerInfo() {
                 timeOfLastUpdate = IpcUtils.TimeMillis(),
                 guid = this.guid,

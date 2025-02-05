@@ -97,6 +97,10 @@ namespace MemoryMappedFileIPC
                 {
 
                 }
+                catch (Exception e)
+                {
+                    DebugLog("Exception in disposing thread:" + e.GetType() + " " + e.Message + " " + e.StackTrace);
+                }
             });
 
             disposingThread.Start();
@@ -166,7 +170,7 @@ namespace MemoryMappedFileIPC
                     connectionsToDispose.Enqueue(removingConnection);
                 }
                 
-                foreach (IpcServerInfo server in IpcUtils.GetLoadedServers(serverDirectory, this.millisBetweenPing * 2, stopToken))
+                foreach (IpcServerInfo server in IpcUtils.GetLoadedServers(serverDirectory, this.millisBetweenPing * 2, stopToken.Token))
                 {
                     if (server.baseKey == channelName &&
                         server.connectionStatus == IpcUtils.ConnectionStatus.WaitingForConnection &&
@@ -188,7 +192,6 @@ namespace MemoryMappedFileIPC
                             if (stopToken != null && !stopToken.IsCancellationRequested)
                             {
                                 UpdateConnectionEvents();
-                                ConnectToAvailableServers();
                             }
                         };
                         clientConnection.OnConnect += () => {
