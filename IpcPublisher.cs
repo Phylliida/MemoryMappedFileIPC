@@ -192,6 +192,8 @@ namespace MemoryMappedFileIPC
                             if (stopToken != null && !stopToken.IsCancellationRequested)
                             {
                                 UpdateConnectionEvents();
+                                // IT IS IMPORT TO NOT PUT ConnectToAvailableServers() HERE
+                                // OTHERWISE YOU CAN GET A LOOP IF SERVER TERMINATED WHERE IT RECURSES OVER AND OVER
                             }
                         };
                         clientConnection.OnConnect += () => {
