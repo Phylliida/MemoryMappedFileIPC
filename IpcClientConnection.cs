@@ -6,7 +6,7 @@ namespace MemoryMappedFileIPC
 {
    public class IpcClientConnection : IDisposable {
 
-        ConcurrentQueueWithNotification<byte[]> bytesToSend = new ConcurrentQueueWithNotification<byte[]>();
+        ConcurrentQueueWithNotification<byte[][]> bytesToSend = new ConcurrentQueueWithNotification<byte[][]>();
         Thread dataThread;
         Thread pingThread;
         CancellationTokenSource parentStopTokenSource;
@@ -17,10 +17,15 @@ namespace MemoryMappedFileIPC
         
         public event Action OnDisconnect;
         public event Action OnConnect;
-        
-        public void SendBytes(byte[] bytes)
+
+        public void SendBytes(byte[][] bytes)
         {
             bytesToSend?.Enqueue(bytes);
+        }
+
+        public void SendBytes(byte[] bytes)
+        {
+            SendBytes(new byte[][] { bytes });
         }
 
 
@@ -79,7 +84,7 @@ namespace MemoryMappedFileIPC
                         while (!stopToken.IsCancellationRequested)
                         {
                             // send messages
-                            while (bytesToSend.TryDequeue(out byte[] bytes, -1, stopToken.Token))
+                            while (bytesToSend.TryDequeue(out byte[][] bytes, -1, stopToken.Token))
                             {
                                 WriteBytes(dataClient, bytes);
                             }
@@ -184,12 +189,15 @@ namespace MemoryMappedFileIPC
             connection.WriteData(kindBytes, 0, 1, stopToken.Token, millisTimeout);
         }
 
-        public void WriteBytes(MemoryMappedFileConnection connection, byte[] bytes, int millisTimeout=-1) {
+        public void WriteBytes(MemoryMappedFileConnection connection, byte[][] bytes, int millisTimeout=-1) {
             byte[] kindBytes = new byte[] {IpcUtils.DATA_MESSAGE};
             connection.WriteData(kindBytes, 0, 1, stopToken.Token, millisTimeout);
             byte[] lenBytes = BitConverter.GetBytes(bytes.Length);
             connection.WriteData(lenBytes, 0, 4, stopToken.Token, millisTimeout);
-            connection.WriteData(bytes, 0, bytes.Length, stopToken.Token, millisTimeout);
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                connection.WriteData(bytes[i], 0, bytes[i].Length, stopToken.Token, millisTimeout);
+            }
         }
 
     }

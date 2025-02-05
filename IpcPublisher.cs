@@ -104,6 +104,11 @@ namespace MemoryMappedFileIPC
 
         public void Publish(byte[] bytes)
         {
+            Publish(new byte[][] { bytes });
+        }
+
+        public void Publish(byte[][] bytes)
+        {
             lock (connectEventLock)
             {
                 if (stopToken == null || stopToken.IsCancellationRequested)

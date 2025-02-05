@@ -112,7 +112,7 @@ namespace MemoryMappedFileIPC
                 }
             };
             // once it connects, we need to open a new channel for new people that want to connect
-            connection.OnRecievedBytes += (byte[] bytes) =>
+            connection.OnRecievedBytes += (byte[][] bytes) =>
             {
                 DebugLog("Recieved bytes in handler " + bytes.Length);
                 this.RecievedBytes?.Invoke(bytes);

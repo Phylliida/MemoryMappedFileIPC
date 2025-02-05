@@ -31,7 +31,7 @@ namespace MemoryMappedFileIPC
 
         public volatile IpcUtils.ConnectionStatus connectionStatus;
 
-        public delegate void RecievedBytesCallback(byte[] bytes);
+        public delegate void RecievedBytesCallback(byte[][] bytes);
         public event RecievedBytesCallback OnRecievedBytes;
         
         public event Action OnConnect;
@@ -84,7 +84,7 @@ namespace MemoryMappedFileIPC
                         while (!stopToken.IsCancellationRequested)
                         {
                             // if it takes twice as long as ping time, timeout
-                            IpcUtils.ResponseType responseType = ReadBytes(dataServer, out byte[] bytes, stopToken);
+                            IpcUtils.ResponseType responseType = ReadBytes(dataServer, out byte[][] bytes, stopToken);
                             if (responseType == IpcUtils.ResponseType.Ping)
                             {
                                 DebugLog("Why did data thread get ping??");
@@ -130,7 +130,7 @@ namespace MemoryMappedFileIPC
                         while (!stopToken.IsCancellationRequested)
                         {
                             // if it takes twice as long as ping time, timeout
-                            IpcUtils.ResponseType responseType = ReadBytes(pingServer, out byte[] bytes, stopToken, millisBetweenPing * 2);
+                            IpcUtils.ResponseType responseType = ReadBytes(pingServer, out byte[][] bytes, stopToken, millisBetweenPing * 2);
                             if (responseType == IpcUtils.ResponseType.Ping)
                             {
                                 //DebugLog("Got ping from " + id);
@@ -224,7 +224,7 @@ namespace MemoryMappedFileIPC
             DebugLog("Finished disposing server " + GetServerKey());
         }
 
-        public IpcUtils.ResponseType ReadBytes(MemoryMappedFileConnection connection, out byte[] bytes, CancellationTokenSource readStopToken, int millisTimeout=-1)
+        public IpcUtils.ResponseType ReadBytes(MemoryMappedFileConnection connection, out byte[][] bytes, CancellationTokenSource readStopToken, int millisTimeout=-1)
         {
             byte[] kindBytes = connection.ReadData(readStopToken.Token, millisTimeout);
             //DebugLog("read bytes with kind " + kindBytes[0]);
@@ -243,11 +243,13 @@ namespace MemoryMappedFileIPC
             else if (kindBytes[0] == IpcUtils.DATA_MESSAGE)
             {
                 DebugLog("read data bytes");
-                byte[] sizeBytes = connection.ReadData(readStopToken.Token, millisTimeout);
-                int numBytes = BitConverter.ToInt32(sizeBytes, 0);
-                DebugLog(numBytes + " more bytes to read");
-                bytes = connection.ReadData(readStopToken.Token, millisTimeout);
-                DebugLog(numBytes + " read " + bytes.Length + " more bytes");
+                byte[] sizeBytesArr = connection.ReadData(readStopToken.Token, millisTimeout);
+                int numByteArrays = BitConverter.ToInt32(sizeBytesArr, 0);
+                bytes = new byte[numByteArrays][];
+                for (int i = 0; i < numByteArrays; i++)
+                {
+                    bytes[i] = connection.ReadData(readStopToken.Token, millisTimeout);
+                }
                 return IpcUtils.ResponseType.Data;
             }
             else
