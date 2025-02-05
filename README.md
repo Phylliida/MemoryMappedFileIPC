@@ -52,13 +52,20 @@ publisher.Publish(byteArray);
 
 to send some bytes.
 
-Make sure to call
+Because there could be multiple publishers and subscribers, sending multiple byte arrays in sequence might be non-trivial.
+
+To address this (and to avoid needing to copy to one big byte array), it is also supported to do
+
+```c#
+byte[][] arrayOfByteArrays = ...; // make your bytes however you want
+publisher.Publish(arrayOfByteArrays);
+```
+
+Once you are done with publisher, make sure to call
 
 ```c#
 publisher.Dispose()
 ```
-
-once you are done using it.
 
 If you want to know when our publisher has connected to any subscriber, you can use
 
@@ -92,9 +99,10 @@ IpcSubscriber subscriber = new IpcSubscriber(channelName, serverDirectory);
 Now you can subscribe to the message event:
 
 ```c#
-subscriber.RecievedBytes += (bytes) =>
+subscriber.RecievedBytes += (byte[][] bytes) =>
 {
 	// process your bytes
+	// if you just sent one byte array above instead of a list, it'll be bytes[0]
 }
 ```
 
