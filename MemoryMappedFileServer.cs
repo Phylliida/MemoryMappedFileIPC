@@ -39,6 +39,35 @@ namespace MemoryMappedFileIPC
                 waitHandle = null;
             }
         }
+
+        public void WaitOrCancel(CancellationToken cancelToken, int timeoutMillis = -1)
+        {
+            WaitOrCancel(waitHandle, cancelToken, timeoutMillis);
+        }
+
+        public static void WaitOrCancel(WaitHandle waitHandle, CancellationToken cancelToken, int timeoutMillis = -1)
+        {
+            if (timeoutMillis >= 0)
+            {
+                using (CancellationTokenSource timeoutToken = new CancellationTokenSource(timeoutMillis))
+                {
+                    WaitHandle.WaitAny(new WaitHandle[] { waitHandle, cancelToken.WaitHandle, timeoutToken.Token.WaitHandle });
+                    if (timeoutToken.IsCancellationRequested)
+                    {
+                        throw new TimeoutException();
+                    }
+                }
+            }
+            else
+            {
+                WaitHandle.WaitAny(new WaitHandle[] { waitHandle, cancelToken.WaitHandle });
+            }
+            if (cancelToken.IsCancellationRequested)
+            {
+                throw new TaskCanceledException();
+            }
+        }
+
     }
     public class MemoryMappedFileConnection : IDisposable
     {
@@ -93,29 +122,6 @@ namespace MemoryMappedFileIPC
             readyToWrite.Set();
         }
 
-        static void WaitOrCancel(WaitHandle waitHandle, CancellationToken cancelToken, int timeoutMillis=-1)
-        {
-            if (timeoutMillis >= 0)
-            {
-                using (CancellationTokenSource timeoutToken = new CancellationTokenSource(timeoutMillis))
-                {
-                    WaitHandle.WaitAny(new WaitHandle[] { waitHandle, cancelToken.WaitHandle, timeoutToken.Token.WaitHandle });
-                    if (timeoutToken.IsCancellationRequested)
-                    {
-                        throw new TimeoutException();
-                    }
-                }
-            }
-            else
-            {
-                WaitHandle.WaitAny(new WaitHandle[] { waitHandle, cancelToken.WaitHandle });
-            }
-            if (cancelToken.IsCancellationRequested)
-            {
-                throw new TaskCanceledException();
-            }
-        }
-
         public void WaitForConnection(CancellationToken cancelToken, int timeoutMillis = -1)
         {
             if (isWriter)
@@ -125,7 +131,7 @@ namespace MemoryMappedFileIPC
             // we need a readyForConnection handle so only one will connect
             // (this prevents multiple connecting to this which breaks assumptions we have)
             readyForConnection.waitHandle.Set();
-            WaitOrCancel(connected.waitHandle, cancelToken, timeoutMillis);
+            connected.WaitOrCancel(cancelToken, timeoutMillis);
         }
 
         public void Connect(CancellationToken cancelToken, int timeoutMillis = -1)
@@ -134,7 +140,7 @@ namespace MemoryMappedFileIPC
             {
                 throw new ArgumentOutOfRangeException("Only writers can call connect, use WaitForConnection instead");
             }
-            WaitOrCancel(readyForConnection.waitHandle, cancelToken, timeoutMillis);
+            readyForConnection.WaitOrCancel(cancelToken, timeoutMillis);
             connected.waitHandle.Set();
         }
 
@@ -160,7 +166,7 @@ namespace MemoryMappedFileIPC
             {
                 throw new ArgumentOutOfRangeException("Only readers can ReadData");
             }
-            WaitOrCancel(readyForRead.waitHandle, cancelToken, timeoutMillis);
+            readyForRead.WaitOrCancel(cancelToken, timeoutMillis);
 
             ulong totalLength = accessor.ReadUInt64(TOTAL_LENGTH_POSITION);
 
@@ -173,7 +179,7 @@ namespace MemoryMappedFileIPC
                 // signal we are done reading
                 finishedRead.waitHandle.Set();
                 // wait until they have inserted the next data
-                WaitOrCancel(readyForRead.waitHandle, cancelToken, timeoutMillis);
+                readyForRead.WaitOrCancel(cancelToken, timeoutMillis);
             }
             ReadChunk(resultBytes, offset);
             finishedRead.waitHandle.Set();
@@ -191,7 +197,7 @@ namespace MemoryMappedFileIPC
             {
                 throw new ArgumentOutOfRangeException("Only writers can WriteData");
             }
-            WaitOrCancel(readyToWrite, cancelToken, timeoutMillis);
+            SharedEventWaitHandle.WaitOrCancel(readyToWrite, cancelToken, timeoutMillis);
             accessor.Write(TOTAL_LENGTH_POSITION, (ulong)len);
             for (int chunkStart = 0; chunkStart < len; chunkStart += this.bufferSize)
             {
@@ -212,7 +218,7 @@ namespace MemoryMappedFileIPC
                 }
 
                 readyForRead.waitHandle.Set();
-                WaitOrCancel(finishedRead.waitHandle, cancelToken, timeoutMillis);
+                finishedRead.WaitOrCancel(cancelToken, timeoutMillis);
                 // sometimes the ACHKNOWLEDGE takes longer to sync than the wait handles,
                 // try a few times
                 

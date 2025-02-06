@@ -81,6 +81,7 @@ namespace MemoryMappedFileIPC
                     {
                         dataClient.Connect(stopToken.Token, millisBetweenPing * timeoutMultiplier);
                         this.connectionStatus = IpcUtils.ConnectionStatus.Connected;
+                        OnConnect?.Invoke();
                         while (!stopToken.IsCancellationRequested)
                         {
                             // send messages
@@ -110,18 +111,17 @@ namespace MemoryMappedFileIPC
                     DebugLog("Connecting to " + id);
                     // "." means local computer which is what we want
                     // PipeOptions.Asynchronous is very important!! Or ConnectAsync won't stop when stopToken is canceled
-                    using (MemoryMappedFileConnection pingClient = new MemoryMappedFileConnection(id, IpcUtils.PING_BUFFER_SIZE, isWriter: true))
+                    using (SharedEventWaitHandle pingClientHandle = new SharedEventWaitHandle(id + "clientHandle", false, true))
                     {
-                        pingClient.Connect(stopToken.Token, millisBetweenPing * timeoutMultiplier);
-                        this.connectionStatus = IpcUtils.ConnectionStatus.Connected;
-                        OnConnect?.Invoke();
-                        while (!stopToken.IsCancellationRequested)
+                        using (SharedEventWaitHandle pingServerHandle = new SharedEventWaitHandle(id + "serverHandle", false, true))
                         {
-                            // keepalive ping
-                            //DebugLog("Sending ping to " + id);
-                            SendPing(pingClient, stopToken.Token, millisBetweenPing);
-                            //DebugLog("Sent ping to " + id);
-                            Task.Delay(millisBetweenPing, stopToken.Token).GetAwaiter().GetResult();
+                            while (!stopToken.IsCancellationRequested)
+                            {
+                                pingClientHandle.waitHandle.Set(); // let them know we are here
+                                pingServerHandle.WaitOrCancel(stopToken.Token, millisBetweenPing * timeoutMultiplier); // wait for response
+                                DebugLog("Got ping from: " + id);
+                                Thread.Sleep(millisBetweenPing); // it would be nice to do cancellable sleep but that risks taking longer if async gets full
+                            }
                         }
                     }
                 }
@@ -177,21 +177,7 @@ namespace MemoryMappedFileIPC
             DebugLog("Finished disposing client " + idOfServer);
         }
 
-        /// <summary>
-        /// sends dummy message to let them know we are still connected
-        /// </summary>
-        /// <param name="ioStream"></param>
-        /// <param name="millisTimeout"></param>
-        /// <returns></returns>
-        public void SendPing(MemoryMappedFileConnection connection, CancellationToken stopToken, int millisTimeout)
-        {
-            byte[] kindBytes = new byte[] { IpcUtils.PING_MESSAGE };
-            connection.WriteData(kindBytes, 0, 1, stopToken, millisTimeout);
-        }
-
         public void WriteBytes(MemoryMappedFileConnection connection, byte[][] bytes, CancellationToken stopToken, int millisTimeout=-1) {
-            byte[] kindBytes = new byte[] {IpcUtils.DATA_MESSAGE};
-            connection.WriteData(kindBytes, 0, 1, stopToken, millisTimeout);
             byte[] lenBytes = BitConverter.GetBytes(bytes.Length);
             connection.WriteData(lenBytes, 0, 4, stopToken, millisTimeout);
             for (int i = 0; i < bytes.Length; i++)
