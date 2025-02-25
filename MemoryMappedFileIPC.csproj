@@ -11,16 +11,12 @@
 	  <Description>Pure c# IPC library using a memory mapped file (shared memory). Pub/sub interface, compatible with most .NET versions. </Description>
 	  <SignAssembly>False</SignAssembly>
 	  <PackageLicenseFile>LICENSE</PackageLicenseFile>
-	  <Version>1.0.7</Version>
+	  <Version>1.0.9</Version>
   </PropertyGroup>
 
 	<Target Name="PostPublish" AfterTargets="Publish">
 		<Exec Command="xcopy &quot;$(PublishDir)\*.dll&quot; &quot;..\ExampleUnityProject\Assets\ResoniteUnityExporter\Plugins&quot; /E /I /Y" />
 	</Target>
-	
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-  </ItemGroup>
 	
   <ItemGroup>
     <None Update="LICENSE">

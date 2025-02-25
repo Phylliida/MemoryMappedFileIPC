@@ -46,13 +46,14 @@ namespace MemoryMappedFileIPC
             // occasionally check to see if new publishers are available
             // todo: use file listener api to look for changes in the server files directly
             // but for the number of servers we have, this is fine enough
-            searchThread = new Thread( () =>
+            searchThread = new Thread(() =>
             {
                 try
                 {
                     while (!stopToken.IsCancellationRequested)
                     {
                         ConnectToAvailableServers();
+                        UpdateConnectionEvents();
                         Task.Delay(millisBetweenPing, stopToken.Token).GetAwaiter().GetResult();
                     }
                 }
@@ -185,23 +186,31 @@ namespace MemoryMappedFileIPC
                             DebugLog);
                         connections[server.processId] = clientConnection;
                         // on disconnect, try to reconnect
-                        clientConnection.OnDisconnect += () =>
-                        {
+                        //clientConnection.OnDisconnect += () =>
+                        //{
                             // important we do this after reset connect event to avoid
                             // race condition where we connect between IsConnected test and reset event
-                            if (stopToken != null && !stopToken.IsCancellationRequested)
-                            {
-                                UpdateConnectionEvents();
+                            //if (stopToken != null && !stopToken.IsCancellationRequested)
+                            //{
+                            // this has a race condition where
+                            //  1. The test above passes through
+                            //  2. The dispose grabs lock
+                            //  3. Dispose tries to dispose, which calls dispose on this connection
+                            //  and waits for the thread that calls OnDisconnect to finish
+                            //  4. It's stuck because that lock is already claimed
+                            // instead we'll just intermittendly update connection events
+                            // with thread above
+                            //    UpdateConnectionEvents();
                                 // IT IS IMPORT TO NOT PUT ConnectToAvailableServers() HERE
                                 // OTHERWISE YOU CAN GET A LOOP IF SERVER TERMINATED WHERE IT RECURSES OVER AND OVER
-                            }
-                        };
-                        clientConnection.OnConnect += () => {
-                            if (stopToken != null && !stopToken.IsCancellationRequested)
-                            {
-                                UpdateConnectionEvents();
-                            }
-                        };
+                            //}
+                        //};
+                        //clientConnection.OnConnect += () => {
+                        //    if (stopToken != null && !stopToken.IsCancellationRequested)
+                        //    {
+                        //        UpdateConnectionEvents();
+                        //    }
+                        //};
                         clientConnection.Init();
                     }
                 }

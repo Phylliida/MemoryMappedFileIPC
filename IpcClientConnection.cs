@@ -14,10 +14,6 @@ namespace MemoryMappedFileIPC
         CancellationTokenSource stopToken;
 
         public IpcUtils.ConnectionStatus connectionStatus;
-        
-        public event Action OnDisconnect;
-        public event Action OnConnect;
-
         public void SendBytes(byte[][] bytes)
         {
             bytesToSend?.Enqueue(bytes);
@@ -81,7 +77,6 @@ namespace MemoryMappedFileIPC
                     {
                         dataClient.Connect(stopToken.Token, millisBetweenPing * timeoutMultiplier);
                         this.connectionStatus = IpcUtils.ConnectionStatus.Connected;
-                        OnConnect?.Invoke();
                         while (!stopToken.IsCancellationRequested)
                         {
                             // send messages
@@ -134,7 +129,6 @@ namespace MemoryMappedFileIPC
                     DebugLog("Terminating client ping connection to " + id);
                     this.connectionStatus = IpcUtils.ConnectionStatus.Terminated;
                     selfStopTokenSource.Cancel();
-                    OnDisconnect?.Invoke();
                 }
             });
 

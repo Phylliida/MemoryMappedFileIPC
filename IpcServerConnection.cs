@@ -1,4 +1,3 @@
-using Newtonsoft.Json;
 using System;
 using System.IO;
 using System.Threading;
@@ -33,9 +32,6 @@ namespace MemoryMappedFileIPC
 
         public delegate void RecievedBytesCallback(byte[][] bytes);
         public event RecievedBytesCallback OnRecievedBytes;
-        
-        public event Action OnConnect;
-        public event Action OnDisconnect;
 
         Thread dataThread;
         Thread pingThread;
@@ -79,7 +75,6 @@ namespace MemoryMappedFileIPC
                         dataServer.WaitForConnection(stopToken.Token);
 
                         connectionStatus = IpcUtils.ConnectionStatus.Connected;
-                        OnConnect?.Invoke();
 
                         while (!stopToken.IsCancellationRequested)
                         {
@@ -130,7 +125,6 @@ namespace MemoryMappedFileIPC
                 {
                     this.connectionStatus = IpcUtils.ConnectionStatus.Terminated;
                     selfStopTokenSource.Cancel();
-                    OnDisconnect?.Invoke();
                     DebugLog("Terminating ping thread of server connected to " + id);
                 }
             });
@@ -226,9 +220,9 @@ namespace MemoryMappedFileIPC
                 baseKey = this.baseKey
             };
 
-            IpcUtils.SafeWriteAllText(
+            IpcUtils.SafeWriteAllBytes(
                 IpcUtils.GuidToConnectionPath(this.guid, this.serverDirectory),
-                JsonConvert.SerializeObject(serverInfo),
+                SerializationUtils.EncodeObject(serverInfo),
                 stopToken
             );
         }

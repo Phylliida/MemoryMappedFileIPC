@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace MemoryMappedFileIPC
 {
@@ -168,6 +167,47 @@ namespace MemoryMappedFileIPC
             return null;
         }
 
+        public static byte[] SafeReadAllBytes(string path, CancellationToken stopToken)
+        {
+            for (int i = 0; i < NUM_RETRIES; i++)
+            {
+                try
+                {
+                    using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    using (var Strings = new BinaryReader(fs))
+                    {
+                        return Strings.ReadBytes((int)fs.Length);
+                    }
+                }
+                catch (Exception e)
+                {
+                    if (i == NUM_RETRIES - 1)
+                    {
+                        // we failed
+                        return null;
+                    }
+                    else
+                    {
+                        try
+                        {
+                            Task.Delay(WAIT_MILLIS, stopToken).GetAwaiter().GetResult();
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            return null;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return null;
+                        }
+                    }
+                }
+            }
+            // fail to read
+            return null;
+        }
+
+
         public delegate void DebugLogType(string msg);
 
         public static void SafeWriteAllText(string path, string contents, CancellationToken stopToken)
@@ -210,6 +250,47 @@ namespace MemoryMappedFileIPC
             }
          }
 
+
+        public static void SafeWriteAllBytes(string path, byte[] contents, CancellationToken stopToken)
+        {
+            // we need this retry logic because other stuff might be trying to access it
+            for (int i = 0; i < NUM_RETRIES; i++)
+            {
+                try
+                {
+                    using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+                    using (var sw = new StreamWriter(fs))
+                    {
+                        sw.Write(contents);
+                        return;
+                    }
+                }
+                catch (Exception e)
+                {
+                    if (i == NUM_RETRIES - 1)
+                    {
+                        // we failed
+                        return;
+                    }
+                    else
+                    {
+                        try
+                        {
+                            Task.Delay(WAIT_MILLIS, stopToken).GetAwaiter().GetResult();
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            return;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// Fetches loaded servers from the config files
         /// </summary>
@@ -218,10 +299,10 @@ namespace MemoryMappedFileIPC
             List<IpcServerInfo> servers = new List<IpcServerInfo>();
             foreach (string server in Directory.GetFiles(serverDirectory, "*.json")) {
                 try {
-                    string text = SafeReadAllText(server, stopToken);
+                    byte[] text = SafeReadAllBytes(server, stopToken);
                     if (text != null)
                     {
-                        IpcServerInfo info = JsonConvert.DeserializeObject<IpcServerInfo>(text);
+                        IpcServerInfo info = SerializationUtils.DecodeObject<IpcServerInfo>(text);
                         long timeSinceUpdated = TimeMillis() - info.timeOfLastUpdate;
                         if (timeSinceUpdated < keepAliveMillis)
                         {
@@ -241,7 +322,7 @@ namespace MemoryMappedFileIPC
                     }
                 }
                 // sometimes they are just left as empty, clean those up
-                catch (JsonSerializationException e) {
+                catch (Exception e) {
                     long lastWriteMillis = DateTimeToMillis(System.IO.File.GetLastWriteTimeUtc(server));
                     long curMillis = DateTimeToMillis(DateTime.UtcNow);
                     if (curMillis - lastWriteMillis > keepAliveMillis)
