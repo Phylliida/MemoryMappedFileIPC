@@ -178,7 +178,7 @@ namespace MemoryMappedFileIPC
                         !connections.ContainsKey(server.processId))
                     {
                         IpcClientConnection clientConnection = new IpcClientConnection(
-                            IpcUtils.GetServerKey(server.baseKey, server.guid),
+                            IpcUtils.GetServerKey(server.baseKey, Guid.Parse(server.guid)),
                             this.millisBetweenPing,
                             2,
                             stopToken,

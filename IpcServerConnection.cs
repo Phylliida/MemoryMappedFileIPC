@@ -214,7 +214,7 @@ namespace MemoryMappedFileIPC
         public void WriteServerStatus(CancellationToken stopToken) {
             IpcServerInfo serverInfo = new IpcServerInfo() {
                 timeOfLastUpdate = IpcUtils.TimeMillis(),
-                guid = this.guid,
+                guid = this.guid.ToString(),
                 processId = this.processId,
                 connectionStatus = this.connectionStatus,
                 baseKey = this.baseKey
