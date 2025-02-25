@@ -259,7 +259,7 @@ namespace MemoryMappedFileIPC
                 try
                 {
                     using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
-                    using (var sw = new StreamWriter(fs))
+                    using (var sw = new BinaryWriter(fs))
                     {
                         sw.Write(contents);
                         return;
