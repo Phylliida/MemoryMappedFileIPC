@@ -23,16 +23,19 @@ namespace MemoryMappedFileIPC
         // custom serialization code because bson was very slow
         public static void ToByteArray(object source, byte[] destination, int offsetInDestination, int lenOfSourceInBytes)
         {
-            GCHandle handle = GCHandle.Alloc(source, GCHandleType.Pinned);
-            try
+            if (lenOfSourceInBytes > 0)
             {
-                IntPtr pointer = handle.AddrOfPinnedObject();
-                Marshal.Copy(pointer, destination, offsetInDestination, lenOfSourceInBytes);
-            }
-            finally
-            {
-                if (handle.IsAllocated)
-                    handle.Free();
+                GCHandle handle = GCHandle.Alloc(source, GCHandleType.Pinned);
+                try
+                {
+                    IntPtr pointer = handle.AddrOfPinnedObject();
+                    Marshal.Copy(pointer, destination, offsetInDestination, lenOfSourceInBytes);
+                }
+                finally
+                {
+                    if (handle.IsAllocated)
+                        handle.Free();
+                }
             }
         }
 
@@ -67,17 +70,20 @@ namespace MemoryMappedFileIPC
 
         public static void CopyToArray<T>(T[] dest, byte[] source, int sourceOffset = 0, int numBytesToCopy = -1) where T : struct
         {
-            // note: it would be nice to make dest an object but that crashes things, don't do that
-            GCHandle handle = GCHandle.Alloc(dest, GCHandleType.Pinned);
-            try
+            if (numBytesToCopy > 0)
             {
-                IntPtr pointer = handle.AddrOfPinnedObject();
-                Marshal.Copy(source, sourceOffset, pointer, (numBytesToCopy >= 0) ? numBytesToCopy : source.Length);
-            }
-            finally
-            {
-                if (handle.IsAllocated)
-                    handle.Free();
+                // note: it would be nice to make dest an object but that crashes things, don't do that
+                GCHandle handle = GCHandle.Alloc(dest, GCHandleType.Pinned);
+                try
+                {
+                    IntPtr pointer = handle.AddrOfPinnedObject();
+                    Marshal.Copy(source, sourceOffset, pointer, (numBytesToCopy >= 0) ? numBytesToCopy : source.Length);
+                }
+                finally
+                {
+                    if (handle.IsAllocated)
+                        handle.Free();
+                }
             }
         }
         public static void CopyArray<T1, T2>(T1[] src, T2[] dst)
@@ -198,9 +204,12 @@ namespace MemoryMappedFileIPC
                     int arraySizeInBytes = (int)(Marshal.SizeOf(arrayType) * arrayLen);
                     //DebugLog("Nice array type:" + arrayType + " main type " + type);
                     object destArr = Array.CreateInstance(arrayType, arrayLen);
-                    ThisStaticType().GetMethod("CopyToArray", BindingFlags.Static | BindingFlags.Public)
-                        .MakeGenericMethod(arrayType)
-                        .Invoke(null, new object[] { destArr, bytes, offset, arraySizeInBytes });
+                    if (arrayLen > 0)
+                    {
+                        ThisStaticType().GetMethod("CopyToArray", BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(arrayType)
+                            .Invoke(null, new object[] { destArr, bytes, offset, arraySizeInBytes });
+                    }
                     //CopyToArray(destArr, bytes, offset, arraySizeInBytes);
                     offset += arraySizeInBytes;
                     return destArr;

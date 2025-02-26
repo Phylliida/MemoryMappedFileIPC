@@ -105,14 +105,16 @@ namespace MemoryMappedFileIPC
                     {
                         using (SharedEventWaitHandle pingServerHandle = new SharedEventWaitHandle(id + "serverHandle", false, false))
                         {
+                            DebugLog(id + " server ping thread waiting");
                             pingClientHandle.WaitOrCancel(stopToken.Token); // wait for initial connection
-                            DebugLog("Connected ping thread to: " + id);
+                            DebugLog(id + " server Connected ping thread to: " + id);
                             while (!stopToken.IsCancellationRequested)
                             {
+                                DebugLog(id + " server setting server handle");
                                 pingServerHandle.waitHandle.Set();
+                                DebugLog(id + " server waiting for client handle");
+                                DebugLog(id + " server waiting for server handle for " + (millisBetweenPing * 2) + " millis");
                                 pingClientHandle.WaitOrCancel(stopToken.Token, this.millisBetweenPing * 2);
-                                DebugLog("Got ping from: " + id);
-                                Thread.Sleep(millisBetweenPing); // it would be nice to do cancellable sleep but that risks taking longer if async gets full
                             }
                         }
                     }
