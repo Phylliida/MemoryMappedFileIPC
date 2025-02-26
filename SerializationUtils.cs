@@ -70,20 +70,17 @@ namespace MemoryMappedFileIPC
 
         public static void CopyToArray<T>(T[] dest, byte[] source, int sourceOffset = 0, int numBytesToCopy = -1) where T : struct
         {
-            if (numBytesToCopy > 0)
+            // note: it would be nice to make dest an object but that crashes things, don't do that
+            GCHandle handle = GCHandle.Alloc(dest, GCHandleType.Pinned);
+            try
             {
-                // note: it would be nice to make dest an object but that crashes things, don't do that
-                GCHandle handle = GCHandle.Alloc(dest, GCHandleType.Pinned);
-                try
-                {
-                    IntPtr pointer = handle.AddrOfPinnedObject();
-                    Marshal.Copy(source, sourceOffset, pointer, (numBytesToCopy >= 0) ? numBytesToCopy : source.Length);
-                }
-                finally
-                {
-                    if (handle.IsAllocated)
-                        handle.Free();
-                }
+                IntPtr pointer = handle.AddrOfPinnedObject();
+                Marshal.Copy(source, sourceOffset, pointer, (numBytesToCopy >= 0) ? numBytesToCopy : source.Length);
+            }
+            finally
+            {
+                if (handle.IsAllocated)
+                    handle.Free();
             }
         }
         public static void CopyArray<T1, T2>(T1[] src, T2[] dst)
