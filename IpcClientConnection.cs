@@ -111,10 +111,13 @@ namespace MemoryMappedFileIPC
                         {
                             while (!stopToken.IsCancellationRequested)
                             {
+                                DebugLog(id + " client Setting client handle");
                                 pingClientHandle.waitHandle.Set(); // let them know we are here
+                                DebugLog(id + " client Waiting for server handle for " + (millisBetweenPing * timeoutMultiplier) + " millis");
                                 pingServerHandle.WaitOrCancel(stopToken.Token, millisBetweenPing * timeoutMultiplier); // wait for response
-                                DebugLog("Got ping from: " + id);
+                                DebugLog(id + " client Got ping, doing sleep for " + millisBetweenPing);
                                 Thread.Sleep(millisBetweenPing); // it would be nice to do cancellable sleep but that risks taking longer if async gets full
+                                DebugLog(id + " client Done doing sleep for " + millisBetweenPing);
                             }
                         }
                     }
