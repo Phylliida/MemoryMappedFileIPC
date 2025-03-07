@@ -16,14 +16,13 @@ namespace MemoryMappedFileIPC
             //                          AccessControlType.Allow);
             //var security = new EventWaitHandleSecurity();
             //security.AddAccessRule(rule);
-            bool created;
             if (openExisting)
             {
                 waitHandle = EventWaitHandle.OpenExisting("Global\\" + name);
             }
             else
             {
-                waitHandle = new EventWaitHandle(initialState, EventResetMode.AutoReset, "Global\\" + name, out created);
+                waitHandle = new EventWaitHandle(initialState, EventResetMode.AutoReset, "Global\\" + name, out bool created);
                 if (!created)
                 {
                     throw new ArgumentException("failed to create event handle " + name);
@@ -85,21 +84,21 @@ namespace MemoryMappedFileIPC
         const int DATA_POSITION = 14; // rest of data, as byte array
 
         // no data availble
-        byte NO_DATA = 1;
+        // readonly byte NO_DATA = 1;
         // some of the data available (chunked)
-        byte PARTIAL_DATA = 2;
+        readonly byte PARTIAL_DATA = 2;
         // last chunk of data (or only chunk of data)
-        byte FINAL_DATA = 3;
+        readonly byte FINAL_DATA = 3;
 
-        byte NO_ACKNOWLEDGE = 1;
-        byte ACKNOWLEDGED = 2;
+        readonly byte NO_ACKNOWLEDGE = 1;
+        readonly byte ACKNOWLEDGED = 2;
 
-        int bufferSize;
+        readonly int bufferSize;
 
         // doesn't need to be shared since only the server uses it
         AutoResetEvent readyToWrite = new AutoResetEvent(false);
 
-        bool isWriter;
+        readonly bool isWriter;
 
         public MemoryMappedFileConnection(string id, int bufferSize, bool isWriter)
         {

@@ -12,9 +12,9 @@ namespace MemoryMappedFileIPC
     public class IpcPublisher : IDisposable
     {
         CancellationTokenSource stopToken = new CancellationTokenSource();
-        ConcurrentDictionary<int, IpcClientConnection> connections = new ConcurrentDictionary<int, IpcClientConnection>();
+        readonly ConcurrentDictionary<int, IpcClientConnection> connections = new ConcurrentDictionary<int, IpcClientConnection>();
         ConcurrentQueueWithNotification<IpcClientConnection> connectionsToDispose = new ConcurrentQueueWithNotification<IpcClientConnection>();
-        int processId;
+        readonly int processId;
         public int millisBetweenPing;
         public string channelName;
         public string serverDirectory;
@@ -24,10 +24,10 @@ namespace MemoryMappedFileIPC
 
         public ManualResetEvent connectEvent = new ManualResetEvent(false);
         public ManualResetEvent disconnectEvent = new ManualResetEvent(true);
-        object connectEventLock = new object();
-        object disposeLock = new object();
+        readonly object connectEventLock = new object();
+        readonly object disposeLock = new object();
 
-        DebugLogType DebugLog;
+        readonly DebugLogType DebugLog;
 
         public IpcPublisher(string channelName, string serverDirectory, int millisBetweenPing = 1000, DebugLogType logger=null)
         {
@@ -229,10 +229,7 @@ namespace MemoryMappedFileIPC
             {
                 lock(connectEventLock)
                 {
-                    if (stopToken != null)
-                    {
-                        stopToken.Cancel();
-                    }
+                    stopToken?.Cancel();
                     foreach (KeyValuePair<int, IpcClientConnection> connection in connections.ToList())
                     {
                         connection.Value.Dispose();

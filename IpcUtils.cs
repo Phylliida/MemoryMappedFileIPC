@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Runtime.Remoting.Channels;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,6 +10,59 @@ namespace MemoryMappedFileIPC
 {
     public class IpcUtils
     {
+        // gross stuff to let us async wait on wait handles
+        /// <summary>
+        /// Returns WaitHandle.WaitTimeout if timeout occurs
+        /// Otherwise, index of first wait handle waited on
+        /// If timeout < 0, there is no timeout
+        /// </summary>
+        /// <param name="handles"></param>
+        /// <param name="timeout"></param>
+        /// <returns></returns>
+        public static async Task<int> WaitAny(WaitHandle[] handles, int timeout=-1)
+        {
+            using (CancellationTokenSource doneToken = new CancellationTokenSource())
+            {
+                List<Task> tasks = handles.Select(handle => WaitOneAsync(handle, doneToken.Token)).ToList();
+                if (timeout >= 0)
+                {
+                    tasks.Add(Task.Delay(timeout));
+                }
+                int resultI = tasks.IndexOf(await Task.WhenAny(tasks));
+                // clean up all waiting tasks
+                doneToken.Cancel();
+                if (resultI == tasks.Count - 1 && timeout >= 0)
+                {
+                    // value we should return if timeout
+                    resultI = WaitHandle.WaitTimeout;
+                }
+                return resultI;
+            }
+        }
+
+        public static Task WaitOneAsync(WaitHandle waitHandle, CancellationToken cancellationToken)
+        {
+            if (waitHandle == null)
+                throw new ArgumentNullException("waitHandle");
+
+            var tcs = new TaskCompletionSource<bool>();
+            var rwh = ThreadPool.RegisterWaitForSingleObject(waitHandle,
+                delegate { Interlocked.Exchange(ref tcs, null)?.TrySetResult(true); }, null, -1, true);
+            var t = tcs.Task;
+            // this unregisters in either case but not both because once one does it it's now null
+            t.ContinueWith((antecedent) => {
+                Interlocked.Exchange(ref tcs, null);
+                Interlocked.Exchange(ref rwh, null)?.Unregister(null);
+            });
+            // todo: does this actually fully clean it up? or do we need to domore?
+            cancellationToken.Register(() => {
+                Interlocked.Exchange(ref tcs, null)?.TrySetResult(true);
+            });
+            return t;
+        }
+
+
+
         public static byte PING_MESSAGE = 1;
         public static byte DATA_MESSAGE = 2;
 
@@ -37,40 +92,10 @@ namespace MemoryMappedFileIPC
         {
             return baseKey + guid.ToString();
         }
-        public static byte[] ReadBytes(System.IO.Stream ioStream, int numBytes, CancellationToken cancelToken)
-        {
-            byte[] buffer = new byte[numBytes];
-            System.Threading.Tasks.Task<int> readTask = ioStream.ReadAsync(buffer, 0, numBytes, cancelToken);
-            int numRead = readTask.GetAwaiter().GetResult();
-            if (cancelToken.IsCancellationRequested)
-            {
-                throw new CanceledException();
-            }
-            return buffer;
-        }
 
         public const int BUFFER_SIZE = 2048 * 16;
         public const int PING_BUFFER_SIZE = 128;
 
-        public static void WriteBytes(System.IO.Stream ioStream, byte[] bytes, int offset, int numToWrite, CancellationToken cancelToken)
-        {
-            System.Threading.Tasks.Task writeTask = ioStream.WriteAsync(bytes, offset, numToWrite, cancelToken);
-            writeTask.GetAwaiter().GetResult();
-            if (cancelToken.IsCancellationRequested)
-            {
-                throw new CanceledException();
-            }
-        }
-
-        public static void Flush(System.IO.Stream ioStream, CancellationToken cancelToken)
-        {
-            System.Threading.Tasks.Task flushTask = ioStream.FlushAsync(cancelToken);
-            flushTask.GetAwaiter().GetResult();
-            if (cancelToken.IsCancellationRequested)
-            {
-                throw new CanceledException();
-            }
-        }
         
         public static long TimeMillis() {
             return DateTimeOffset.Now.ToUnixTimeMilliseconds();
@@ -101,7 +126,7 @@ namespace MemoryMappedFileIPC
                 {
                     File.Delete(path);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     if (i == NUM_RETRIES - 1)
                     {
@@ -139,7 +164,7 @@ namespace MemoryMappedFileIPC
                         return Strings.ReadToEnd();
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     if (i == NUM_RETRIES - 1)
                     {
@@ -179,7 +204,7 @@ namespace MemoryMappedFileIPC
                         return Strings.ReadBytes((int)fs.Length);
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     if (i == NUM_RETRIES - 1)
                     {
@@ -224,7 +249,7 @@ namespace MemoryMappedFileIPC
                         return;
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     if (i == NUM_RETRIES - 1)
                     {
@@ -265,7 +290,7 @@ namespace MemoryMappedFileIPC
                         return;
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     if (i == NUM_RETRIES - 1)
                     {
@@ -322,7 +347,7 @@ namespace MemoryMappedFileIPC
                     }
                 }
                 // sometimes they are just left as empty, clean those up
-                catch (Exception e) {
+                catch (Exception) {
                     long lastWriteMillis = DateTimeToMillis(System.IO.File.GetLastWriteTimeUtc(server));
                     long curMillis = DateTimeToMillis(DateTime.UtcNow);
                     if (curMillis - lastWriteMillis > keepAliveMillis)

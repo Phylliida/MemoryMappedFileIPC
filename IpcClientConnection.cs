@@ -8,7 +8,7 @@ namespace MemoryMappedFileIPC
         ConcurrentQueueWithNotification<byte[][]> bytesToSend = new ConcurrentQueueWithNotification<byte[][]>();
         Thread dataThread;
         Thread pingThread;
-        CancellationTokenSource parentStopTokenSource;
+        readonly CancellationTokenSource parentStopTokenSource;
         CancellationTokenSource selfStopTokenSource;
         CancellationTokenSource stopToken;
 
@@ -25,11 +25,11 @@ namespace MemoryMappedFileIPC
 
 
 
-        private string idOfServer;
-        private int millisBetweenPing;
-        private int timeoutMultiplier;
+        private readonly string idOfServer;
+        private readonly int millisBetweenPing;
+        private readonly int timeoutMultiplier;
 
-        IpcUtils.DebugLogType DebugLog;
+        readonly IpcUtils.DebugLogType DebugLog;
         public IpcClientConnection(string idOfServer, int millisBetweenPing, int timeoutMultiplier,
             CancellationTokenSource stopToken, IpcUtils.DebugLogType DebugLog=null)
         {
@@ -141,10 +141,7 @@ namespace MemoryMappedFileIPC
         public void Dispose()
         {
             DebugLog("Started disposing client " + idOfServer);
-            if (selfStopTokenSource != null)
-            {
-                selfStopTokenSource.Cancel();
-            }
+            selfStopTokenSource?.Cancel();
             if (dataThread != null)
             {
                 dataThread.Join();
